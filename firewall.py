@@ -10,9 +10,19 @@ class Firewall:
     def __init__(self, config, iface_int, iface_ext):
         self.iface_int = iface_int
         self.iface_ext = iface_ext
+        f = file.open(config['rule'])
+        self.rules = []
+        while True:
+            line = f.readLine()
+            if line = "":
+                break
+            else:
+                self.rules.append(line)
+        f.close()
+
 
         # TODO: Load the firewall rules (from rule_filename) here.
-        print 'I am supposed to load rules from %s, but I am feeling lazy.' % \
+        #print 'I am supposed to load rules from %s, but I am feeling lazy.' % \
                 config['rule']
 
         # TODO: Load the GeoIP DB ('geoipdb.txt') as well.
@@ -21,8 +31,19 @@ class Firewall:
     # @pkt_dir: either PKT_DIR_INCOMING or PKT_DIR_OUTGOING
     # @pkt: the actual data of the IPv4 packet (including IP header)
     def handle_packet(self, pkt_dir, pkt):
-        # TODO: Your main firewall code will be here.
-        pass
+        send = self.iface_int.send_ip_packet if pkt_dir == 'PKT_DIR_INCOMING' else
+               self.iface_ext.send_ip_packet
+        for rule in self.rules:
+            verdict, rule_type, ip, port = self.parse_rule(rule)
+            if not self.ip_okay(packet_ip):
+                continue
+            if is_protocol(rule_type) and not self.port_ok(packet_port):
+                continue
+            send(pkt)
+            break
+
+
+
 
     # TODO: You can add more methods as you want.
 
