@@ -1,0 +1,31 @@
+//in init
+
+for line in lines
+    if starts with '%':
+        continue
+    else
+        load line into self.
+    // look comments, ignore them
+
+
+//in handle packet
+for line in self.lines
+    verdict = line[0]
+    dns_or_protocol = line[1]
+    ip = line[2]
+    port = line[3]
+
+    //if at any point one of these does not match, move to next line
+    if dns_or_protocol is a protocol and matches the packet
+        //act on it
+    if dns_or_protocol is dns
+        //move on to the ip
+    if ip matches packet ip
+        keep going
+    if port matches packet port
+        apply verdict to packet
+        kill function
+pass the packet //iterated all lines and found no rule
+
+def is_protocol(word)
+    return word is ___ or word is ___ ...
