@@ -9,12 +9,15 @@ for line in lines
 
 
 //in handle packet
-for line in self.lines
-    verdict = line[0]
-    dns_or_protocol = line[1]
-    ip = line[2]
-    port = line[3]
-
+for rule in self.lines
+    verdict = rule[0]
+    dns_or_protocol = rule[1]
+    ip = rule[2]
+    port = rule[3]
+    if len(rule) < 5:
+        self.handle_dns(rule)
+    else:
+	self.handle_protocol(rule)
     //if at any point one of these does not match, move to next line
     if dns_or_protocol is a protocol and matches the packet
         //act on it
