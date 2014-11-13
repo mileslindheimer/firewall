@@ -21,21 +21,13 @@ class Firewall:
             else:
                 self.rules.append(line)
         f.close()
-        tmp = []
         db = open("geoipdb.txt")
         while True:
-            line = f.readline()
+            line = db.readline()
             if line == "":
                 break
-            tmp.append(line.split())
-        self.geoipdb = self.build_bst(tmp)
-
-        # TODO: Load the firewall rules (from rule_filename) here.
-        #print 'I am supposed to load rules from %s, but I am feeling lazy.' % \
-                #config['rule']
-
-        # TODO: Load the GeoIP DB ('geoipdb.txt') as well.
-        # TODO: Also do some initialization if needed.
+            self.geoipdb.append(line.split())
+        db.close()
 
     # @pkt_dir: either PKT_DIR_INCOMING or PKT_DIR_OUTGOING
     # @pkt: the actual data of the IPv4 packet (including IP header)
@@ -49,6 +41,7 @@ class Firewall:
             #    continue
         send(pkt)
             #break
+
     def ip_match(self, ip, pkt_ip):
         #compare ip addresses
         return ip == 'any' or ip == self.geoipdb.lookup(pkt_ip).country() or ip == pkt_ip
