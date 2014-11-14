@@ -51,11 +51,12 @@ class Firewall:
         port = None if len(rule) < 5 else int(rule[3])
         return verdict, protocol_or_dns, ip, port
 
-    def ip_match(self, rule_ip, pkt_ip):
+    def ip_match(self, rule_prot, rule_ip, pkt_ip):
         # check if rule_ip is a country or just a regular address
         # if it's a country, do binary search on pkt_ip (country, base, bound) record
             # if the country matches that of the search record, the ip matches
         # else check if the rule_ip matches the pkt_ip
+            # if rule_prot is dns then we need to query dns server
 
     def port_match(self, rule_port, pkt_port):
         return rule_port is None or rule_port == pkt_port
