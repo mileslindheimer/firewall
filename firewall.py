@@ -57,6 +57,7 @@ class Firewall:
             # if the country matches that of the search record, the ip matches
         # else check if the rule_ip matches the pkt_ip
             # if rule_prot is dns then we need to query dns server
+        
 
     def port_match(self, rule_port, pkt_port):
         return rule_port is None or rule_port == pkt_port
@@ -77,6 +78,19 @@ class Firewall:
                 and self.prot_type_match(prot_type, pkt_prot)
                 and self.port_match(rule_port, pkt_port))
 
+    def bin_search(self, arr, v):
+        if len(arr) == 0:
+            return
+        m = int(len(arr)/2)
+        if v < arr[m][1]:
+            # v is less than base -> search left
+            return self.bin_search(arr[:m], v)
+        elif v > arr[m]2:
+            # v is greater than bound -> search right
+            return self.bin_search(arr[m:], v)
+        else:
+            # v matches -> return country
+            return arr[m][0]
     # @pkt_dir: either PKT_DIR_INCOMING or PKT_DIR_OUTGOING
     # @pkt: the actual data of the IPv4 packet (including IP header)
     def handle_packet(self, pkt_dir, pkt):
