@@ -47,7 +47,7 @@ class Firewall:
             protocol_or_dns = 1
         else:
             protocol_or_dns = 'dns'
-        ip = rule[2]
+        ip = struct.unpack('!L', socket.inet_aton(rule[2]))
         port = None if len(rule) < 5 else int(rule[3])
         return verdict, protocol_or_dns, ip, port
 
@@ -69,13 +69,13 @@ class Firewall:
         pkt_prot = socket.htons(struct.unpack('!B', pkt[9:10]))
         src_ip = socket.htonl(struct.unpack('!L', pkt[12:16]))
         dst_ip = socket.htonl(struct.unpack('!L', pkt[16:20]))
-        head_length = socket.htonl(ord(pkt[:1])) # need to get 4 bits from 8 here
+        head_length = ord(pkt[:1]) & int('0b00001111')
         src_port = socket.htonl(struct.unpack('!L', pkt[head_length:(head_length + 2)]))
         dst_port = socket.htonl(struct.unpack('!L', pkt[(head_length + 2):(head_length + 4)])
         return (self.ip_match(prot_type, rule_ip, src_ip)
                 and self.ip_match(prot_type, rule_ip, dst_ip)
                 and self.prot_type_match(prot_type, pkt_prot)
-                and self.port_match(rule_port, pkt_port))
+                and self.port_match(rule_port, src_port))
 
     # @pkt_dir: either PKT_DIR_INCOMING or PKT_DIR_OUTGOING
     # @pkt: the actual data of the IPv4 packet (including IP header)
@@ -86,6 +86,7 @@ class Firewall:
             send = self.iface_ext.send_ip_packet
         for rule in self.rules:
             verdict = rule[0]
-            if self.rule_matches_packet(rule, pkt) and verdict == 'drop':
+            head_length = ord(pkt[:1]) & int('0b00001111')
+            if head_length < 5 or self.rule_matches_packet(rule, pkt) and verdict == 'drop':
                 continue
             send(pkt)
