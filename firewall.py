@@ -32,7 +32,7 @@ class Firewall:
             line = line.split()
             country = line[2]
             base = struct.unpack('!L', socket.inet_aton(line[0]))
-            bound = struct.unpack('L', socket.inet_aton(line[1]))
+            bound = struct.unpack('!L', socket.inet_aton(line[1]))
             self.geoipdb.append((country, base, bound))
         db.close()
 
@@ -69,8 +69,8 @@ class Firewall:
         src_ip = socket.htonl(struct.unpack('!L', pkt[12:16]))
         dst_ip = socket.htonl(struct.unpack('!L', pkt[16:20]))
         head_length = socket.htonl(ord(pkt[:1])) # need to get 4 bits from 8 here
-        src_port = socket.htonl(struct.unpack('!L', pkt[head_length:(head_length + 4)]))
-        dst_port = socket.htonl(struct.unpack('!L', pkt[(head_length + 4):(head_length + 8)])
+        src_port = socket.htonl(struct.unpack('!L', pkt[head_length:(head_length + 2)]))
+        dst_port = socket.htonl(struct.unpack('!L', pkt[(head_length + 2):(head_length + 4)])
         return (self.ip_match(prot_type, rule_ip, src_ip)
                 and self.ip_match(prot_type, rule_ip, dst_ip)
                 and self.prot_type_match(prot_type, pkt_prot)
