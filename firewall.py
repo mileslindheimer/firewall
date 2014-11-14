@@ -9,6 +9,7 @@ import struct
 # You must NOT use any 3rd-party libraries, though.
 
 class Firewall:
+
     def __init__(self, config, iface_int, iface_ext):
         self.iface_int = iface_int
         self.iface_ext = iface_ext
@@ -29,10 +30,26 @@ class Firewall:
             if line == "":
                 break
             line = line.split()
-            country, base, bound = line[2], struct.unpack('!L', socket.inet_aton(line[0])),
-                                   struct.unpack('L', socket.inet_aton(line[1]))
+            country = line[2]
+            base = struct.unpack('!L', socket.inet_aton(line[0]))
+            bound = struct.unpack('L', socket.inet_aton(line[1]))
             self.geoipdb.append((country, base, bound))
         db.close()
+
+    def parse_rule(self, rule):
+        rule = rule.split()
+        verdict = rule[0]
+        if rule[1] == 'udp':
+            protocol_or_dns = 17
+        elif rule[1] == 'tcp':
+            protocol_or_dns = 6
+        elif rule[1] == 'icmp':
+            protocol_or_dns = 1
+        else:
+            protocol_or_dns = 'dns'
+        ip = rule[2]
+        port = None if len(rule) < 5 else int(rule[3])
+        return verdict, protocol_or_dns, ip, port
 
     def ip_match(self, rule_ip, pkt_ip):
         # check if rule_ip is a country or just a regular address
@@ -40,20 +57,20 @@ class Firewall:
             # if the country matches that of the search record, the ip matches
         # else check if the rule_ip matches the pkt_ip
 
-    def parse_rule(self, rule):
-        rule = rule.split()
-        verdict = rule[0]
-        protocol_or_dns = rule[1]
-        ip = rule[2]
-        port = None if len(rule) < 5 else rule[3]
-        return verdict, protocol_or_dns, ip, port
+    def port_match(self, rule_port, pkt_port):
+        return rule_port is None or rule_port == pkt_port
 
-    def rule_matches(rule, pkt):
+    def prot_type_match(self, prot_type, pkt_prot):
+        return prot_type == 'dns' or prot_type == pkt_prot
+
+    def rule_matches(self, rule, pkt):
         _, prot_type, rule_ip, rule_port = self.parse_rule(rule)
-        pkt_prot = struct.unpack('!B', pkt[9:10])
+        pkt_prot = socket.htons(struct.unpack('!B', pkt[9:10]))
         src_ip = socket.htonl(struct.unpack('!L', pkt[12:16]))
         dst_ip = socket.htonl(struct.unpack('!L', pkt[16:20]))
-        
+        head_length = socket.htonl(ord(pkt[:1])) # need to get 4 bits from 8 here
+        src_port = socket.htonl(struct.unpack('!L', pkt[head_length:(head_length + 4)]))
+        dst_port = socket.htonl(struct.unpack('!L', pkt[(head_length + 4):(head_length + 8)])
         return (self.ip_match(prot_type, rule_ip, src_ip)
                 and self.ip_match(prot_type, rule_ip, dst_ip)
                 and self.prot_type_match(prot_type, pkt_prot)
