@@ -34,39 +34,37 @@ class Firewall:
             self.geoipdb.append((country, base, bound))
         db.close()
 
-    # @pkt_dir: either PKT_DIR_INCOMING or PKT_DIR_OUTGOING
-    # @pkt: the actual data of the IPv4 packet (including IP header)
-    def handle_packet(self, pkt_dir, pkt):
-        send = self.iface_int.send_ip_packet if pkt_dir == PKT_DIR_INCOMING else self.iface_ext.send_ip_packet
-        pkt_protocol = struct.unpack('!B', pkt[9:10])
-        src_ip = socket.htonl(struct.unpack('!L', pkt[12:16]))
-        dst_ip = socket.htonl(struct.unpack('!L', pkt[16:20]))
-        pass
-
-        #for rule in self.rules:
-        #    verdict, rule_type, ip, port = self.parse_rule(rule)
-        #    if not self.ip_okay(packet_ip):
-        #    #    continue
-        #    #if is_protocol(rule_type) and not self.port_ok(packet_port):
-        #    #    continue
-        #send(pkt)
-        #    #break
 
     def ip_match(self, rule_ip, pkt_ip):
         # check if rule_ip is a country or just a regular address
         # if it's a country, do binary search on pkt_ip (country, base, bound) record
             # if the country matches that of the search record, the ip matches
         # else check if the rule_ip matches the pkt_ip
-        
 
     def parse_rule(self, rule):
         rule = rule.split()
         verdict = rule[0]
-        rule_type = rule[1]
+        protocol_or_dns = rule[1]
         ip = rule[2]
         port = None if len(rule) < 5 else rule[3]
-        return verdict, rule_type, ip, port
+        return verdict, protocol_or_dns, ip, port
 
-    # TODO: You can add more methods as you want.
+    def rule_matches(rule, pkt):
+        _, protocol_or_dns, ip, port = self.parse_rule(rule)
+        pkt_protocol = struct.unpack('!B', pkt[9:10])
+        src_ip = socket.htonl(struct.unpack('!L', pkt[12:16]))
+        dst_ip = socket.htonl(struct.unpack('!L', pkt[16:20]))
+        return self.ip_match(rule, src_ip) and self.ip_match(dst_ip)
 
-# TODO: You may want to add more classes/functions as well.
+    # @pkt_dir: either PKT_DIR_INCOMING or PKT_DIR_OUTGOING
+    # @pkt: the actual data of the IPv4 packet (including IP header)
+    def handle_packet(self, pkt_dir, pkt):
+        if pkt_dir == PKT_DIR_INCOMING:
+            send = self.iface_int.send_ip_packet
+        else: 
+            send = self.iface_ext.send_ip_packet
+        for rule in self.rules:
+            verdict = rule[0]
+            if self.rule_matches_packet(rule, pkt) and verdict == 'drop':
+                continue
+            send(pkt)
