@@ -48,11 +48,13 @@ class Firewall:
             protocol_or_dns = 1
         else:
             protocol_or_dns = 'dns'
-        if rule[2] == 'any':
-            ip = 'any'
-        else:
-            print rule[2]
+        #ip = rule[2]
+        #if ip != 'any' and len(ip) != 2 and :
+        #print ip
+        try:
             ip = struct.unpack('!L', socket.inet_aton(rule[2]))
+        except socket.error:
+            ip = rule[2]
         port = None if len(rule) < 5 else int(rule[3])
         return verdict, protocol_or_dns, ip, port
 
@@ -75,9 +77,12 @@ class Firewall:
         if rule_ip == 'any':
             return True
         if len(rule_ip) == 2:
-            return self.bin_search(self.geoipd, pkt_ip) == rule_ip
+            return self.bin_search(self.geoipdb, pkt_ip) == rule_ip
         elif rule_prot == 'dns':
             # need to check pkt_ip is part of domain
+            print pkt_ip, rule_ip
+            pkt_ip = socket.inet_ntoa(str(pkt_ip))
+            rule_ip = socket.inet_ntoa(str(rule_ip))
             return self.dns_match(pkt_ip, rule_ip)
         return rule_ip == pkt_ip
 
@@ -89,7 +94,6 @@ class Firewall:
 
     def rule_matches(self, rule, pkt):
         _, prot_type, rule_ip, rule_port = self.parse_rule(rule)
-        print struct.unpack('!L', pkt[12:16])[0]
         pkt_prot = socket.htons(struct.unpack('!B', pkt[9:10])[0])
         src_ip = socket.htonl(struct.unpack('!L', pkt[12:16])[0])
         dst_ip = socket.htonl(struct.unpack('!L', pkt[16:20])[0])
@@ -100,7 +104,7 @@ class Firewall:
 
     def dns_match(self, ip_addr, rule_ip):
         # still need to handle wildcards
-        return domain == self.query_dns(ip_addr)
+        return rule_ip == self.query_dns(ip_addr)
 
     def query_dns(self, ip_addr):
         # may need to return all aliases, not just hostname
