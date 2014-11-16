@@ -48,8 +48,11 @@ class Firewall:
             protocol_or_dns = 1
         else:
             protocol_or_dns = 'dns'
-        print rule[2]
-        ip = struct.unpack('!L', socket.inet_aton(rule[2]))
+        if rule[2] == 'any':
+            ip = 'any'
+        else:
+            print rule[2]
+            ip = struct.unpack('!L', socket.inet_aton(rule[2]))
         port = None if len(rule) < 5 else int(rule[3])
         return verdict, protocol_or_dns, ip, port
 
@@ -69,7 +72,9 @@ class Firewall:
 
     def ip_match(self, rule_prot, rule_ip, pkt_ip):
         # check if rule_ip is a country or just a regular address
-        if rule_ip.length == 2:
+        if rule_ip == 'any':
+            return True
+        if len(rule_ip) == 2:
             return self.bin_search(self.geoipd, pkt_ip) == rule_ip
         elif rule_prot == 'dns':
             # need to check pkt_ip is part of domain
@@ -84,12 +89,13 @@ class Firewall:
 
     def rule_matches(self, rule, pkt):
         _, prot_type, rule_ip, rule_port = self.parse_rule(rule)
-        pkt_prot = socket.htons(struct.unpack('!B', pkt[9:10]))
-        src_ip = socket.htonl(struct.unpack('!L', pkt[12:16]))
-        dst_ip = socket.htonl(struct.unpack('!L', pkt[16:20]))
+        print struct.unpack('!L', pkt[12:16])[0]
+        pkt_prot = socket.htons(struct.unpack('!B', pkt[9:10])[0])
+        src_ip = socket.htonl(struct.unpack('!L', pkt[12:16])[0])
+        dst_ip = socket.htonl(struct.unpack('!L', pkt[16:20])[0])
         head_length = ord(pkt[:1]) & 0b00001111
-        src_port = socket.htonl(struct.unpack('!L', pkt[head_length:(head_length + 2)]))
-        dst_port = socket.htonl(struct.unpack('!L', pkt[(head_length + 2):(head_length + 4)]))
+        src_port = socket.htonl(struct.unpack('!L', pkt[head_length:(head_length + 4)])[0])
+        dst_port = socket.htonl(struct.unpack('!L', pkt[(head_length + 4):(head_length + 8)])[0])
         return (self.ip_match(prot_type, rule_ip, src_ip) and self.ip_match(prot_type, rule_ip, dst_ip) and self.prot_type_match(prot_type, pkt_prot) and self.port_match(rule_port, src_port))
 
     def dns_match(self, ip_addr, rule_ip):
