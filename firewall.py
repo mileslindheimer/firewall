@@ -48,7 +48,7 @@ class Firewall:
         else:
             protocol_or_dns = 'dns'
         ip = struct.unpack('!L', socket.inet_aton(rule[2]))
-        port = None if len(rule) < 5 else int(rule[3])
+        port = None if len(rule) < 5 else int(rule[3]) or rule[1] == 'icmp'
         return verdict, protocol_or_dns, ip, port
 
     def bin_search(self, arr, v):
@@ -56,17 +56,13 @@ class Firewall:
             return
         m = int(len(arr)/2)
         if v < arr[m][1]:
-            # v is less than base -> search left
             return self.bin_search(arr[:m], v)
         elif v > arr[m]2:
-            # v is greater than bound -> search right
             return self.bin_search(arr[m:], v)
         else:
-            # v matches -> return country
             return arr[m][0]
 
     def ip_match(self, rule_prot, rule_ip, pkt_ip):
-        # check if rule_ip is a country or just a regular address
         if rule_ip.length == 2:
             return self.bin_search(self.geoipd, pkt_ip) == rule_ip
         elif rule_prot == 'dns':
