@@ -3,6 +3,7 @@
 from main import PKT_DIR_INCOMING, PKT_DIR_OUTGOING
 import socket
 import struct
+import re
 
 # TODO: Feel free to import any Python standard moduless as necessary.
 # (http://docs.python.org/2/library/)
@@ -14,7 +15,8 @@ class Firewall:
         self.iface_int = iface_int
         self.iface_ext = iface_ext
         f = open(config['rule'])
-        self.rules = []
+        self.ip_rules = []
+        self.geoipdb = []
         while True:
             line = f.readline()
             if line == "":
@@ -22,6 +24,9 @@ class Firewall:
             elif line[0] == "%" or line[0] == "\n":
                 continue
             else:
+                line = self.parse_rule(line)
+                if line[2] == 'dns' and line[3] != 'any':
+                    line[3] = re.compile(self.regex_transform(line[3]))
                 self.rules.append(line)
         f.close()
         db = open("geoipdb.txt")
@@ -36,6 +41,24 @@ class Firewall:
             self.geoipdb.append((country, base, bound))
         db.close()
 
+    def regex_transform(self, domain):
+        if domain[0] == "*":
+            return "\w*" + regex_transform(domain[1:])
+        elif domain[0] == ".":
+            return "\." + regex_transform(domain[1:])
+        return domain[0] + regex_transform(domain[1:])
+
+    def bin_search(self, arr, v):
+        if len(arr) == 0:
+            return
+        m = int(len(arr)/2)
+        if v < arr[m][1]:
+            return self.bin_search(arr[:m], v)
+        elif v > arr[m][2]:
+            return self.bin_search(arr[m:], v)
+        else:
+            return arr[m][0]
+
     def parse_rule(self, rule):
         rule = rule.split()
         verdict = rule[0]
@@ -47,58 +70,62 @@ class Firewall:
             protocol_or_dns = 1
         else:
             protocol_or_dns = 'dns'
-        ip = struct.unpack('!L', socket.inet_aton(rule[2]))
-        port = None if len(rule) < 5 else int(rule[3]) or rule[1] == 'icmp'
-        return verdict, protocol_or_dns, ip, port
+        try:
+            ip = struct.unpack('!L', socket.inet_aton(rule[2]))
+        except socket.error:
+            ip = rule[2]
+        port = None if len(rule) < 5 else int(rule[3])
+        return (verdict, protocol_or_dns, ip, port)
 
-    def bin_search(self, arr, v):
-        if len(arr) == 0:
-            return
-        m = int(len(arr)/2)
-        if v < arr[m][1]:
-            return self.bin_search(arr[:m], v)
-        elif v > arr[m]2:
-            return self.bin_search(arr[m:], v)
+    # unpack dns needs domain at the end of tuple
+    def unpack_packet(self, pkt, pkt_dir):
+        head_length = ord(pkt[:1]) & 0b00001111
+        if head_length < 5:
+            return None
+        protocol = struct.unpack('!B', pkt[9:10])[0]
+        if pkt_dir == PKT_DIR_INCOMING:
+            ip = struct.unpack('L', pkt[12:16])[0]
+            port = struct.unpack('!L', pkt[head_length:(head_length + 4)])[0]
         else:
-            return arr[m][0]
+            ip = struct.unpack('!L', pkt[16:20])[0]
+            port = struct.unpack('!L', pkt[(head_length + 4):(head_length + 8)])[0]
+        if port == 53 and protocol == 17:
+            qdcount = struct.unpack('!H', pkt[(head_length + 12):(head_length + 14)])
+            if qdcount == 1:
+                i = 20
+                char = pkt[(head_length + i)]
+                domain = ""
+                while char != "":
+                    i += 1
+                    domain += char
+                    char = pkt[(head_length + i)]
+                return (head_length, protocol, ip, port, domain)
+            return None
+        return (head_length, protocol, ip, port)
 
-    def ip_match(self, rule_prot, rule_ip, pkt_ip):
-        if rule_ip.length == 2:
-            return self.bin_search(self.geoipd, pkt_ip) == rule_ip
-        elif rule_prot == 'dns':
-            # need to check pkt_ip is part of domain
-            pass
-        return rule_ip == pkt_ip
-
-    def port_match(self, rule_port, pkt_port):
-        return rule_port is None or rule_port == pkt_port
-
-    def prot_type_match(self, prot_type, pkt_prot):
-        return prot_type == 'dns' or prot_type == pkt_prot
-
-    def rule_matches(self, rule, pkt):
-        _, prot_type, rule_ip, rule_port = self.parse_rule(rule)
-        pkt_prot = socket.htons(struct.unpack('!B', pkt[9:10]))
-        src_ip = socket.htonl(struct.unpack('!L', pkt[12:16]))
-        dst_ip = socket.htonl(struct.unpack('!L', pkt[16:20]))
-        head_length = ord(pkt[:1]) & int('0b00001111')
-        src_port = socket.htonl(struct.unpack('!L', pkt[head_length:(head_length + 2)]))
-        dst_port = socket.htonl(struct.unpack('!L', pkt[(head_length + 2):(head_length + 4)])
-        return (self.ip_match(prot_type, rule_ip, src_ip)
-                and self.ip_match(prot_type, rule_ip, dst_ip)
-                and self.prot_type_match(prot_type, pkt_prot)
-                and self.port_match(rule_port, src_port))
+    def ip_match(self, rule_ip, pkt_ip):
+        if len(rule_ip) == 2:
+            return self.bin_search(self.geoipdb, pkt_ip) == rule_ip
+        return rule_ip == 'any' or rule_ip == pkt_ip
+    
+    def rule_matches(self, rule, pkt, pkt_dir, verdict):
+        if rule[1] == 'dns' and len(pkt) == 5 and rule[2].match(pkt[4]) is not None:
+            return rule[0]
+        match = (self.protocol_match(rule[1], pkt[1])
+                 and rule[2] == pkt[2]
+                 and rule[3] == pkt[3])
+        return rule[0] if match else verdict
 
     # @pkt_dir: either PKT_DIR_INCOMING or PKT_DIR_OUTGOING
     # @pkt: the actual data of the IPv4 packet (including IP header)
     def handle_packet(self, pkt_dir, pkt):
-        if pkt_dir == PKT_DIR_INCOMING:
-            send = self.iface_int.send_ip_packet
-        else: 
-            send = self.iface_ext.send_ip_packet
-        for rule in self.rules:
-            verdict = rule[0]
-            head_length = ord(pkt[:1]) & int('0b00001111')
-            if head_length < 5 or self.rule_matches_packet(rule, pkt) and verdict == 'drop':
-                continue
-            send(pkt)
+        unpacked_pkt = self.unpack_pkt(pkt)
+        verdict = 'pass'
+        if unpacked_pkt is not None:
+            for rule in self.rules:
+                verdict = self.rule_matches(rule, pkt, pkt_dir, verdict)
+            if verdict == 'pass':
+                if pkt_dir == PKT_DIR_INCOMING:
+                    self.iface_int.send_ip_packet(pkt)
+                else:
+                    self.iface_ext.send_ip_packet(pkt)
