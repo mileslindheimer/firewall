@@ -80,9 +80,7 @@ class Firewall:
             return self.bin_search(self.geoipdb, pkt_ip) == rule_ip
         elif rule_prot == 'dns':
             # need to check pkt_ip is part of domain
-            print pkt_ip, rule_ip
-            pkt_ip = socket.inet_ntoa(str(pkt_ip))
-            rule_ip = socket.inet_ntoa(str(rule_ip))
+            print pkt_ip
             return self.dns_match(pkt_ip, rule_ip)
         return rule_ip == pkt_ip
 
@@ -95,8 +93,13 @@ class Firewall:
     def rule_matches(self, rule, pkt):
         _, prot_type, rule_ip, rule_port = self.parse_rule(rule)
         pkt_prot = socket.htons(struct.unpack('!B', pkt[9:10])[0])
-        src_ip = socket.htonl(struct.unpack('!L', pkt[12:16])[0])
-        dst_ip = socket.htonl(struct.unpack('!L', pkt[16:20])[0])
+        if prot_type == 'dns':
+            src_ip = "%s.%s.%s.%s" % struct.unpack('!4B', pkt[12:16])
+            dst_ip = "%s.%s.%s.%s" % struct.unpack('!4B', pkt[16:20])
+            print src_ip, dst_ip
+        else:
+            src_ip = socket.htonl(struct.unpack('!L', pkt[12:16])[0])
+            dst_ip = socket.htonl(struct.unpack('!L', pkt[16:20])[0])
         head_length = ord(pkt[:1]) & 0b00001111
         src_port = socket.htonl(struct.unpack('!L', pkt[head_length:(head_length + 4)])[0])
         dst_port = socket.htonl(struct.unpack('!L', pkt[(head_length + 4):(head_length + 8)])[0])
