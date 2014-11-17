@@ -4,6 +4,7 @@ from main import PKT_DIR_INCOMING, PKT_DIR_OUTGOING
 import socket
 import struct
 import re
+import ast
 
 # TODO: Feel free to import any Python standard moduless as necessary.
 # (http://docs.python.org/2/library/)
@@ -75,13 +76,20 @@ class Firewall:
             try:
                 ip = struct.unpack('!L', socket.inet_aton(rule[2]))
             except socket.error:
-                ip = rule[2]
+                try:
+                    addr, prefix = rule[2].split('/')
+                    ip = (struct.unpack('!L', socket.inet_aton(addr))[0], int(prefix))
+                except:
+                    ip = rule[2]
         if len(rule) < 4:
             port = None
         elif rule[3] == 'any':
             port = 'any'
         else:
-            port = int(rule[3])
+            try:
+                port = int(rule[3])
+            except ValueError:
+                port = ast.literal_eval(re.sub("-", ",", rule[3]))
         return (verdict, protocol_or_dns, ip, port)
 
     def unpack_pkt(self, pkt, pkt_dir):
@@ -116,12 +124,20 @@ class Firewall:
                 if (q_type == 1 or q_type == 28) and q_class == 1:
                     return (head_length, protocol, ip, port, domain)
             return None
+        port = ord(pkt[head_length]) if protocol == 1 else port
         return (head_length, protocol, ip, port)
 
+    def port_match(self, rule_port, pkt_port):
+        if isinstance(rule_port, tuple):
+            return pkt_port >= rule_port[0] and pkt_port <= rule_port[1]
+        return rule_port == 'any' or rule_port == pkt_port
+
     def ip_match(self, rule_ip, pkt_ip):
-        if len(rule_ip) == 2:
-            print self.bin_search(self.geoipdb,pkt_ip), rule_ip
+        if isinstance(rule_ip, str) == 2:
             return self.bin_search(self.geoipdb, pkt_ip) == rule_ip
+        if isinstance(rule_ip, tuple):
+            rule_ip = rule_ip[0] & (4294967295 >> 32 - rule_ip[1] << 32 - rule_ip[1])
+            return (pkt_ip & rule_ip) == rule_ip
         return rule_ip == 'any' or rule_ip == pkt_ip
 
     def rule_matches(self, rule, pkt, pkt_dir, verdict):
@@ -129,7 +145,7 @@ class Firewall:
             return rule[0]
         match = ((rule[1] == 'any' or rule[1] == pkt[1])
                  and self.ip_match(rule[2], pkt[2])
-                 and rule[3] == 'any' or rule[3] == pkt[3])
+                 and self.port_match(rule[3], pkt[3]))
         return rule[0] if match else verdict
 
     # @pkt_dir: either PKT_DIR_INCOMING or PKT_DIR_OUTGOING
