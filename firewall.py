@@ -90,7 +90,7 @@ class Firewall:
             return None
         protocol = struct.unpack('!B', pkt[9:10])[0]
         if pkt_dir == PKT_DIR_INCOMING:
-            ip = struct.unpack('L', pkt[12:16])[0]
+            ip = struct.unpack('!L', pkt[12:16])[0]
             port = struct.unpack('!H', pkt[head_length:(head_length + 2)])[0]
         else:
             ip = struct.unpack('!L', pkt[16:20])[0]
