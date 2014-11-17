@@ -120,6 +120,7 @@ class Firewall:
 
     def ip_match(self, rule_ip, pkt_ip):
         if len(rule_ip) == 2:
+            print self.bin_search(self.geoipdb,pkt_ip), rule_ip
             return self.bin_search(self.geoipdb, pkt_ip) == rule_ip
         return rule_ip == 'any' or rule_ip == pkt_ip
 
