@@ -108,7 +108,6 @@ class Firewall:
             return self.bin_search(self.geoipdb, pkt_ip) == rule_ip
         return rule_ip == 'any' or rule_ip == pkt_ip
     def protocol_match(self, rule_prot, pkt_prot):
-        print rule_prot, pkt_prot
         return rule_prot == pkt_prot
     def rule_matches(self, rule, pkt, pkt_dir, verdict):
         if rule[1] == 'dns' and len(pkt) == 5 and rule[2].match(pkt[4]) is not None:
