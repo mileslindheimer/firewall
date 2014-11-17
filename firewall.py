@@ -33,8 +33,8 @@ class Firewall:
                 break
             line = line.split()
             country = line[2]
-            base = struct.unpack('!L', socket.inet_aton(line[0]))
-            bound = struct.unpack('!L', socket.inet_aton(line[1]))
+            base = struct.unpack('!L', socket.inet_aton(line[0]))[0]
+            bound = struct.unpack('!L', socket.inet_aton(line[1]))[0]
             self.geoipdb.append((country, base, bound))
         db.close()
 
@@ -48,13 +48,13 @@ class Firewall:
         return domain[0] + self.regex_transform(domain[1:])
 
     def bin_search(self, arr, v):
-        if len(arr) == 0:
-            return
-        m = int(len(arr)/2)
+        if len(arr) == 1:
+            return arr[0][0]
+        m = len(arr)/2
         if v < arr[m][1]:
             return self.bin_search(arr[:m], v)
         elif v > arr[m][2]:
-            return self.bin_search(arr[m:], v)
+            return self.bin_search(arr[m+1:], v)
         else:
             return arr[m][0]
 
@@ -68,7 +68,7 @@ class Firewall:
         elif rule[1] == 'icmp':
             protocol_or_dns = 1
         else:
-            protocol_or_dns = 'dns'
+            protocol_or_dns = rule[1]
         if protocol_or_dns == 'dns':
             ip = re.compile(self.regex_transform(rule[2]))
         else:
@@ -84,7 +84,6 @@ class Firewall:
             port = int(rule[3])
         return (verdict, protocol_or_dns, ip, port)
 
-    # unpack dns needs domain at the end of tuple
     def unpack_pkt(self, pkt, pkt_dir):
         head_length = 4 * (ord(pkt[:1]) & 0b00001111)
         if head_length < 20:
