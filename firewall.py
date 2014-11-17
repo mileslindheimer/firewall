@@ -74,7 +74,7 @@ class Firewall:
             ip = re.compile(self.regex_transform(rule[2]))
         else:
             try:
-                ip = struct.unpack('!L', socket.inet_aton(rule[2]))
+                ip = struct.unpack('!L', socket.inet_aton(rule[2]))[0]
             except socket.error:
                 try:
                     addr, prefix = rule[2].split('/')
@@ -133,14 +133,12 @@ class Firewall:
         return rule_port == 'any' or rule_port == pkt_port
 
     def ip_match(self, rule_ip, pkt_ip):
-        if len(rule_ip) == 2:
+        if isinstance(rule_ip, str) and len(rule_ip) == 2:
             return self.bin_search(self.geoipdb, pkt_ip) == rule_ip
-        elif len(rule_ip) == 1:
-            return rule_ip == 'any' or rule_ip == pkt_ip
         elif isinstance(rule_ip, tuple):
-            print rule_ip
             rule_ip = rule_ip[0] & (4294967295 >> (32 - rule_ip[1]) << (32 - rule_ip[1]))
             return (pkt_ip & rule_ip) == rule_ip
+        return rule_ip == 'any' or rule_ip == pkt_ip
 
     def rule_matches(self, rule, pkt, pkt_dir, verdict):
         if rule[1] == 'dns' and len(pkt) == 5 and rule[2].match(pkt[4]) is not None:
