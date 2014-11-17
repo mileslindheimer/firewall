@@ -135,10 +135,12 @@ class Firewall:
     def ip_match(self, rule_ip, pkt_ip):
         if len(rule_ip) == 2:
             return self.bin_search(self.geoipdb, pkt_ip) == rule_ip
-        if isinstance(rule_ip, tuple):
+        elif len(rule_ip) == 1:
+            return rule_ip == 'any' or rule_ip == pkt_ip
+        elif isinstance(rule_ip, tuple):
+            print rule_ip
             rule_ip = rule_ip[0] & (4294967295 >> (32 - rule_ip[1]) << (32 - rule_ip[1]))
             return (pkt_ip & rule_ip) == rule_ip
-        return rule_ip == 'any' or rule_ip == pkt_ip
 
     def rule_matches(self, rule, pkt, pkt_dir, verdict):
         if rule[1] == 'dns' and len(pkt) == 5 and rule[2].match(pkt[4]) is not None:
