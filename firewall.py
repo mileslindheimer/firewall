@@ -136,7 +136,7 @@ class Firewall:
         if isinstance(rule_ip, str) == 2:
             return self.bin_search(self.geoipdb, pkt_ip) == rule_ip
         if isinstance(rule_ip, tuple):
-            rule_ip = rule_ip[0] & (4294967295 >> 32 - rule_ip[1] << 32 - rule_ip[1])
+            rule_ip = rule_ip[0] & (4294967295 >> (32 - rule_ip[1]) << (32 - rule_ip[1]))
             return (pkt_ip & rule_ip) == rule_ip
         return rule_ip == 'any' or rule_ip == pkt_ip
 
