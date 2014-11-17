@@ -4,12 +4,12 @@ import socket
 print 'testing dns rules'
 
 print 'testing gethostbyname'
-domains = ['google.com', 'stanford.edu', 'gibhub.com', 'australia.gov.au']
+domains = ['google.com', 'stanford.edu', 'github.com', 'australia.gov.au']
 for domain in domains:
     try:
         socket.gethostbyname(domain)
-        print 'packet from %s passed' % domain
+        print 'packet to/from %s passed' % domain
     except socket.gaierror:
-        print 'packet from %s dropped' % domain
+        print 'packet to/from %s dropped' % domain
 
-print 'Passed tests!'
+print 'end of tests'
