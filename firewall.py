@@ -76,8 +76,11 @@ class Firewall:
             try:
                 ip = struct.unpack('!L', socket.inet_aton(rule[2]))
             except socket.error:
-                addr, prefix = rule[2].split('/')
-                ip = (struct.unpack('!L', socket.inet_aton(addr))[0], int(prefix))
+                try:
+                    addr, prefix = rule[2].split('/')
+                    ip = (struct.unpack('!L', socket.inet_aton(addr))[0], int(prefix))
+                except:
+                    ip = rule[2]
         if len(rule) < 4:
             port = None
         elif rule[3] == 'any':
@@ -125,8 +128,9 @@ class Firewall:
         return (head_length, protocol, ip, port)
 
     def port_match(self, rule_port, pkt_port):
-        return (rule_port == 'any' or rule_port == pkt_port
-                or (pkt_port >= rule_port[0] and pkt_port <= rule[0]))
+        if isinstance(rule_port, tuple):
+            return pkt_port >= rule_port[0] and pkt_port <= rule_port[1]
+        return rule_port == 'any' or rule_port == pkt_port
 
     def ip_match(self, rule_ip, pkt_ip):
         if isinstance(rule_ip, str) == 2:
