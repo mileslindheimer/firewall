@@ -15,7 +15,7 @@ class Firewall:
         self.iface_int = iface_int
         self.iface_ext = iface_ext
         f = open(config['rule'])
-        self.ip_rules = []
+        self.rules = []
         self.geoipdb = []
         while True:
             line = f.readline()
@@ -107,7 +107,9 @@ class Firewall:
         if len(rule_ip) == 2:
             return self.bin_search(self.geoipdb, pkt_ip) == rule_ip
         return rule_ip == 'any' or rule_ip == pkt_ip
-    
+    def protocol_match(self, rule_prot, pkt_prot):
+        print rule_prot, pkt_prot
+        return rule_prot == pkt_prot
     def rule_matches(self, rule, pkt, pkt_dir, verdict):
         if rule[1] == 'dns' and len(pkt) == 5 and rule[2].match(pkt[4]) is not None:
             return rule[0]
@@ -119,7 +121,7 @@ class Firewall:
     # @pkt_dir: either PKT_DIR_INCOMING or PKT_DIR_OUTGOING
     # @pkt: the actual data of the IPv4 packet (including IP header)
     def handle_packet(self, pkt_dir, pkt):
-        unpacked_pkt = self.unpack_pkt(pkt)
+        unpacked_pkt = self.unpack_packet(pkt, pkt_dir)
         verdict = 'pass'
         if unpacked_pkt is not None:
             for rule in self.rules:
