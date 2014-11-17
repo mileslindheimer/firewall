@@ -121,6 +121,7 @@ class Firewall:
                 if (q_type == 1 or q_type == 28) and q_class == 1:
                     return (head_length, protocol, ip, port, domain)
             return None
+        port = ord(pkt[head_length]) if protocol == 1 else port
         return (head_length, protocol, ip, port)
 
     def port_match(self, rule_port, pkt_port):
