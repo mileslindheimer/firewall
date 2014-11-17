@@ -42,7 +42,7 @@ class Firewall:
         if len(domain) == 1:
             return domain
         elif domain[0] == "*":
-            return "\w*" + self.regex_transform(domain[1:])
+            return ".*" + self.regex_transform(domain[1:])
         elif domain[0] == ".":
             return "\." + self.regex_transform(domain[1:])
         return domain[0] + self.regex_transform(domain[1:])
@@ -76,7 +76,12 @@ class Firewall:
                 ip = struct.unpack('!L', socket.inet_aton(rule[2]))
             except socket.error:
                 ip = rule[2]
-        port = None if len(rule) < 5 else int(rule[3])
+        if len(rule) < 4:
+            port = None
+        elif rule[3] == 'any':
+            port = 'any'
+        else:
+            port = int(rule[3])
         return (verdict, protocol_or_dns, ip, port)
 
     # unpack dns needs domain at the end of tuple
