@@ -133,9 +133,12 @@ class Firewall:
         return rule_port == 'any' or rule_port == pkt_port
 
     def ip_match(self, rule_ip, pkt_ip):
-        if len(rule_ip) == 2:
+        if isinstance(rule_ip, str):
             return self.bin_search(self.geoipdb, pkt_ip) == rule_ip
         elif len(rule_ip) == 1:
+            if isinstance(rule_ip[0], str):
+                print rule_ip
+                return self.bin_search(self.geoipdb, pkt_ip) == rule_ip
             return rule_ip == 'any' or rule_ip == pkt_ip
         elif isinstance(rule_ip, tuple):
             print rule_ip
