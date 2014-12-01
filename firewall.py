@@ -139,14 +139,21 @@ class Firewall:
             rule_ip = rule_ip[0] & (4294967295 >> (32 - rule_ip[1]) << (32 - rule_ip[1]))
             return (pkt_ip & rule_ip) == rule_ip
         return rule_ip == 'any' or rule_ip == pkt_ip
-
+    
     def rule_matches(self, rule, pkt, pkt_dir, verdict):
         if rule[1] == 'dns' and len(pkt) == 5 and rule[2].match(pkt[4]) is not None:
-            return rule[0]
+            return self.deny_dns(pkt)
         match = ((rule[1] == 'any' or rule[1] == pkt[1])
                  and self.ip_match(rule[2], pkt[2])
                  and self.port_match(rule[3], pkt[3]))
-        return rule[0] if match else verdict
+        if rule[1] == 'tcp' and match:
+            return self.deny_tcp(pkt[2], pkt[3], pkt)
+
+    def deny_tcp(self, ip, port, pkt):
+        pass
+    
+    def deny_dns(self, pkt):
+        pass
 
     # @pkt_dir: either PKT_DIR_INCOMING or PKT_DIR_OUTGOING
     # @pkt: the actual data of the IPv4 packet (including IP header)
