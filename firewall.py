@@ -17,7 +17,6 @@ class Firewall:
         self.iface_ext = iface_ext
         f = open(config['rule'])
         self.rules = []
-        self.geoipdb = []
         while True:
             line = f.readline()
             if line == "":
@@ -27,17 +26,7 @@ class Firewall:
             else:
                 self.rules.append(self.parse_rule(line))
         f.close()
-        db = open("geoipdb.txt")
-        while True:
-            line = db.readline()
-            if line == "":
-                break
-            line = line.split()
-            country = line[2]
-            base = struct.unpack('!L', socket.inet_aton(line[0]))[0]
-            bound = struct.unpack('!L', socket.inet_aton(line[1]))[0]
-            self.geoipdb.append((country, base, bound))
-        db.close()
+        
 
     def regex_transform(self, domain):
         if len(domain) == 1:
@@ -133,23 +122,20 @@ class Firewall:
         return rule_port == 'any' or rule_port == pkt_port
 
     def ip_match(self, rule_ip, pkt_ip):
-        if isinstance(rule_ip, str) and len(rule_ip) == 2:
-            return self.bin_search(self.geoipdb, pkt_ip) == rule_ip
-        elif isinstance(rule_ip, tuple):
+        if isinstance(rule_ip, tuple):
             rule_ip = rule_ip[0] & (4294967295 >> (32 - rule_ip[1]) << (32 - rule_ip[1]))
             return (pkt_ip & rule_ip) == rule_ip
         return rule_ip == 'any' or rule_ip == pkt_ip
     
-    def rule_matches(self, rule, pkt, pkt_dir, verdict):
+    def rule_matches(self, rule, pkt, pkt_dir, verdict, protocol):
         if rule[1] == 'dns' and len(pkt) == 5 and rule[2].match(pkt[4]) is not None:
-            return self.deny_dns(pkt)
+            return rule[0] 
         match = ((rule[1] == 'any' or rule[1] == pkt[1])
                  and self.ip_match(rule[2], pkt[2])
                  and self.port_match(rule[3], pkt[3]))
-        if rule[1] == 'tcp' and match:
-            return self.deny_tcp(pkt[2], pkt[3], pkt)
+        return (rule[0], protocol) if match else (verdict, protocol)
 
-    def deny_tcp(self, ip, port, pkt):
+    def deny_tcp(self, pkt):
         pass
     
     def deny_dns(self, pkt):
@@ -159,11 +145,18 @@ class Firewall:
     # @pkt: the actual data of the IPv4 packet (including IP header)
     def handle_packet(self, pkt_dir, pkt):
         unpacked_pkt = self.unpack_pkt(pkt, pkt_dir)
-        verdict = 'pass'
+        verdict, protocol = 'pass', None
         if unpacked_pkt is not None:
             for rule in self.rules:
-                verdict = self.rule_matches(rule, unpacked_pkt, pkt_dir, verdict)
-            if verdict == 'pass':
+                verdict, protocol = self.rule_matches(rule, unpacked_pkt, pkt_dir, verdict, rule[1])
+            if verdict == 'deny':
+                if protocol == 'tcp':
+                    self.deny_tcp(unpacked_pkt)
+                else:
+                    self.deny_dns(unpacked_pkt)
+            else:
+                if verdict == 'log':
+                    self.log_http(pkt)
                 if pkt_dir == PKT_DIR_INCOMING:
                     self.iface_int.send_ip_packet(pkt)
                 else:
