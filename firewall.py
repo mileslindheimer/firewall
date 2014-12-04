@@ -60,7 +60,7 @@ class Firewall:
             protocol_or_dns = 1
         else:
             protocol_or_dns = rule[1]
-        if protocol_or_dns == 'dns':
+        if protocol_or_dns == 'dns' or protocol_or_dns == 'http':
             ip = re.compile(self.regex_transform(rule[2]))
         else:
             try:
@@ -121,11 +121,19 @@ class Firewall:
             # watch the seq modulo here!
             elif seq > self.expected[(ip, src, dst)]:
                 if pkt_dir == PKT_DIR_OUTGOING:
-                    if self.buffers[(ip, src, dst)] is None:
-                        self.buffers[(ip, src, dst)] = data
-                    if self.buffers[(ip, src, dst)].find('\r\n\r\n') == -1:
+                    if self.buffers[(ip, src, dst)] is None: 
+                        http_head = data.split(' ').lower()
+                        host_index = http_head.find('host:')
+                        if host_index != -1:
+                            host = http_head[host_index+1]
+                            if self.host_match(host):
+                                self.buffers[(ip, src, dst)] = data
+                    header_end = self.buffers[(ip, src, dst)].find('\r\n\r\n')
+                    if header_end == -1:
                         self.buffers[(ip, src, dst)].append(data)
                         self.expected[(ip, src, dst)] = seq+1
+                    else:
+                        del self.expected[(ip, src, dst)]
                 else:
                     if self.buffers[(ip, src, dst)] is None:
                         self.buffers[(ip, src, dst)] = data
@@ -138,6 +146,7 @@ class Firewall:
                         self.log_http(request, response, ip)
                         del self.buffers[(ip, src, dst)]
                         del self.buffers[(ip, dst, src)]
+                        del self.expected[(ip,src, dst)]
 
         port = ord(pkt[head_length]) if protocol == 1 else port
         return (head_length, protocol, ip, port)
@@ -182,7 +191,14 @@ class Firewall:
             rule_ip = rule_ip[0] & (4294967295 >> (32 - rule_ip[1]) << (32 - rule_ip[1]))
             return (pkt_ip & rule_ip) == rule_ip
         return rule_ip == 'any' or rule_ip == pkt_ip
-    
+
+    def host_match(self, host):
+        match = False
+        for rule in self.rules:
+            if rule[0] == 'log' and rule[2].match(host)
+                return True
+        return False
+
     def rule_matches(self, rule, pkt, pkt_dir, verdict, protocol):
         if rule[1] == 'dns' and len(pkt) == 5 and rule[2].match(pkt[4]) is not None:
             return rule[0] 
