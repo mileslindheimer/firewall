@@ -111,7 +111,7 @@ class Firewall:
                 i += 1
                 q_type = struct.unpack('!H', pkt[base + i: base + i + 2])[0]
                 q_class = struct.unpack('!H', pkt[base + i + 2:base + i + 4])[0]
-                if (q_type == 1 or q_type == 28) and q_class == 1:
+                if (q_type == 1) and q_class == 1:
                     return (head_length, protocol, ip, port, domain)
             return None
         if port == 80 and protocol == 6:
@@ -207,11 +207,60 @@ class Firewall:
                  and self.port_match(rule[3], pkt[3]))
         return (rule[0], protocol) if match else (verdict, protocol)
 
-    def deny_tcp(self, pkt):
-        pass
-    
-    def deny_dns(self, pkt):
-        pass
+    def deny_tcp(self, pkt, base):
+        # build ip header 
+        vsn = struct.pack('!B', 4) << 4
+        length = struct.pack('!H', 40)
+        src_ip = pkt[16:20] 
+        dst_ip = pkt[12:16]
+        ttl = struct.pack('!B', 64)
+        protocol = struct.pack('!B', 6)
+        
+        iphead = vsn+'\x00'+length+'\x00\x00'+ttl+protocol+'\x00\x00'+src_ip+dst_ip
+        ipchecksum = struct.pack('!H', self.ip_checksum(iphead))
+        iphead = iphead[:10] + ipchecksum + iphead[12:]
+
+        # build tcp header 
+        pkt = pkt[base:]
+        srcport = pkt[2:4]
+        dstport = pkt[:2]
+        seq = struct.pack('!H', struct.unpack('!H', pkt[4:8])+1)
+        flags = struct.pack('!B', 0b00010100)
+        
+        tcphead = srcport+dstport+seq+'\x00\x00\x00\x00\x00'+flags+'\x00\x00\x00\x00'
+        tcpchecksum = struct.pack('!H', self.tcp_checksum(tcphead))
+        tcphead = tcphead[:16] + tcpchecksum + tcphead[18:]
+        
+        rst_pkt = iphead + tcphead
+        self.iface_ext.send_ip_packet(rst_pkt)
+
+    def deny_dns(self, pkt, base):
+        # build ip header 
+        vsn = struct.pack('!B', 4) << 4
+        length = struct.pack('!H', 36)
+        src_ip = pkt[16:20] 
+        dst_ip = pkt[12:16]
+        ttl = struct.pack('!B', 1)
+        protocol = struct.pack('!B', 17)
+
+        iphead = vsn+'\x00'+length+'\x00\x00'+ttl+protocol+'\x00\x00'+src_ip+dst_ip
+
+        # build udp header
+        pkt = pkt[base:]
+        srcport = struct.pack('!H', 53)
+        dstport = struct.pack('!H', 53)
+        udplen = struct.pack('!H', 16)
+        udphead = srcport + dstport + '\x00\x00\x00\x00'
+
+        pkt = pkt[8:]
+        dns_id = pkt[:2]
+        rcode = pkt[3:4]
+        ttl = stuct.pack('!B', 1)
+        ip = struct.pack('!L', '54.173.224.150')
+        dns_pkt = dns_id + '\x00' + rcode + '\x00\x01'+'\x00\x00\x00\x00\x00\x00' + ip
+
+        deny_pkt = iphead + udphead + dns_pkt
+        self.iface_int.send_ip_packet(deny_pkt)
 
     # @pkt_dir: either PKT_DIR_INCOMING or PKT_DIR_OUTGOING
     # @pkt: the actual data of the IPv4 packet (including IP header)
@@ -223,12 +272,10 @@ class Firewall:
                 verdict, protocol = self.rule_matches(rule, unpacked_pkt, pkt_dir, verdict, rule[1])
             if verdict == 'deny':
                 if protocol == 'tcp':
-                    self.deny_tcp(unpacked_pkt)
+                    self.deny_tcp(pkt, unpacked_pkt[0])
                 else:
-                    self.deny_dns(unpacked_pkt)
+                    self.deny_dns(pkt, unpacked_pkt[0])
             else:
-                if verdict == 'log':
-                    self.log_http(pkt)
                 if pkt_dir == PKT_DIR_INCOMING:
                     self.iface_int.send_ip_packet(pkt)
                 else:
