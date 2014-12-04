@@ -26,7 +26,6 @@ class Firewall:
             else:
                 self.rules.append(self.parse_rule(line))
         f.close()
-        
 
     def regex_transform(self, domain):
         if len(domain) == 1:
@@ -49,7 +48,7 @@ class Firewall:
             return arr[m][0]
 
     def parse_rule(self, rule):
-        rule = rule.split()
+        rule = rule.lower().split()
         verdict = rule[0]
         if rule[1] == 'udp':
             protocol_or_dns = 17
@@ -115,6 +114,12 @@ class Firewall:
             return None
         port = ord(pkt[head_length]) if protocol == 1 else port
         return (head_length, protocol, ip, port)
+
+    def log_http(self, hostname, method, path, version, status, objectsize):
+        log = open('http.log', 'a')
+        log.write('%s %s %s %s %s %s\n' % (hostname, method, path, version, status, objectsize):
+        log.flush()
+        log.close()
 
     def port_match(self, rule_port, pkt_port):
         if isinstance(rule_port, tuple):
