@@ -15,6 +15,8 @@ class Firewall:
     def __init__(self, config, iface_int, iface_ext):
         self.iface_int = iface_int
         self.iface_ext = iface_ext
+        self.buffers = {}
+        self.expected = {}
         f = open(config['rule'])
         self.rules = []
         while True:
@@ -112,8 +114,39 @@ class Firewall:
                 if (q_type == 1 or q_type == 28) and q_class == 1:
                     return (head_length, protocol, ip, port, domain)
             return None
+        if port == 80 and protocol == 6:
+            data, src, dst, seq = self.unpack_http(pkt[head_length:])
+            if self.expected[(ip,src,dst)] is None:
+                self.expected[(ip,src,dst)] = seq + 1
+            # watch the seq modulo here!
+            elif seq > self.expected[(ip, src, dst)]:
+                if pkt_dir == PKT_DIR_OUTGOING:
+                    if self.buffers[(ip, src, dst)] is None:
+                        self.buffers[(ip, src, dst)] = data
+                    if self.buffers[(ip, src, dst)].find('\r\n\r\n') == -1:
+                        self.buffers[(ip, src, dst)].append(data)
+                        self.expected[(ip, src, dst)] = seq+1
+                else:
+                    if self.buffers[(ip, src, dst)] is None:
+                        self.buffers[(ip, src, dst)] = data
+                    if self. buffers[(ip,src,dst)].find('\r\n\r\n') == -1:
+                        self.buffers[(ip, src, dst)].append(data)
+                        self.expected[(ip, src, dst)] = seq+1
+                    else:
+                        request = self.buffers[(ip, dst, src)].split('\r\n')
+                        response = self.buffers[(ip, src, dst)].split('\r\n')
+                        self.log_http(request, response, ip)
+                        del self.buffers[(ip, src, dst)]
+                        del self.buffers[(ip, dst, src)]
+
         port = ord(pkt[head_length]) if protocol == 1 else port
         return (head_length, protocol, ip, port)
+    def unpack_http(self, pkt):
+        seq = struct.unpack('!L', pkt[4:8])
+        offset = stuct.unpack('!B', pkt[12:13])[0] >> 4
+        src, dst = struct.unpack('!HH', pkt[:4])
+        data = pkt[offset+20:]
+        return data, src, dst, seq
 
     def log_http(self, request, response, ip):
         '''request, response: lists split by '\r\n''''
