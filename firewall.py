@@ -115,9 +115,27 @@ class Firewall:
         port = ord(pkt[head_length]) if protocol == 1 else port
         return (head_length, protocol, ip, port)
 
-    def log_http(self, hostname, method, path, version, status, objectsize):
+    def log_http(self, request, response, ip):
+        '''request, response: lists split by '\r\n''''
+        # parse request header
+        req_line = request[0].split(' ')
+        method, path, version = req_line[0], req_line[1], req_line[2]
+        hostname = ip
+        for line in request:
+            line.split('')
+            if line[0].lower() == 'host':
+                hostname = line[1]
+                break
+        # parse response header
+        res_line = response[0].split(' ')
+        objectsize = -1
+        for line in response:
+            line.split('')
+            if line[0].lower() == 'content-length':
+                objectsize = line[1]
+        # write transaction to log
         log = open('http.log', 'a')
-        log.write('%s %s %s %s %s %s\n' % (hostname, method, path, version, status, objectsize):
+        log.write('%s %s %s %s %s %s\n' % (hostname, method, path, version, status, objectsize))
         log.flush()
         log.close()
 
