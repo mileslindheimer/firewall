@@ -193,7 +193,6 @@ class Firewall:
         return rule_ip == 'any' or rule_ip == pkt_ip
 
     def host_match(self, host):
-        match = False
         for rule in self.rules:
             if rule[0] == 'log' and rule[2].match(host):
                 return True
@@ -209,7 +208,7 @@ class Firewall:
 
     def deny_tcp(self, pkt, base):
         # build ip header 
-        vsn = struct.pack('!B', 4) << 4
+        vsn = struct.pack('!B', 4 << 4)
         length = struct.pack('!H', 40)
         src_ip = pkt[16:20] 
         dst_ip = pkt[12:16]
@@ -236,29 +235,29 @@ class Firewall:
 
     def deny_dns(self, pkt, base):
         # build ip header 
-        vsn = struct.pack('!B', 4) << 4
-        length = struct.pack('!H', 36)
+        vsn = struct.pack('!B', 0x45)
+        length = struct.pack('!H', 0x36)
         src_ip = pkt[16:20] 
         dst_ip = pkt[12:16]
-        ttl = struct.pack('!B', 1)
-        protocol = struct.pack('!B', 17)
+        ttl = struct.pack('!B', 0x01)
+        protocol = struct.pack('!B', 0x17)
 
         iphead = vsn+'\x00'+length+'\x00\x00'+ttl+protocol+'\x00\x00'+src_ip+dst_ip
 
         # build udp header
         pkt = pkt[base:]
-        srcport = struct.pack('!H', 53)
-        dstport = struct.pack('!H', 53)
-        udplen = struct.pack('!H', 16)
+        srcport = struct.pack('!H', 0x53)
+        dstport = struct.pack('!H', 0x53)
+        udplen = struct.pack('!H', 0x16)
         udphead = srcport + dstport + '\x00\x00\x00\x00'
 
         pkt = pkt[8:]
         dns_id = pkt[:2]
         rcode = pkt[3:4]
-        ttl = struct.pack('!B', 1)
-        ip = struct.pack('!L', '54.173.224.150')
+        ttl = struct.pack('!B', 0x01)
+        ip = struct.pack('!L', struct.unpack('!L', socket.inet_aton('54.173.224.150'))[0])
         dns_pkt = dns_id + '\x00' + rcode + '\x00\x01'+'\x00\x00\x00\x00\x00\x00' + ip
-
+        
         deny_pkt = iphead + udphead + dns_pkt
         self.iface_int.send_ip_packet(deny_pkt)
 
