@@ -116,29 +116,30 @@ class Firewall:
             return None
         if port == 80 and protocol == 6:
             data, src, dst, seq = self.unpack_http(pkt[head_length:])
-            if self.expected[(ip,src,dst)] is None:
+            if (ip, src, dst) not in self.expected:
                 self.expected[(ip,src,dst)] = seq + 1
             # watch the seq modulo here!
             elif seq > self.expected[(ip, src, dst)]:
                 if pkt_dir == PKT_DIR_OUTGOING:
-                    if self.buffers[(ip, src, dst)] is None: 
-                        http_head = data.split(' ').lower()
+                    if (ip,src,dst) not in self.buffers: 
+                        http_head = data.lower()
                         host_index = http_head.find('host:')
                         if host_index != -1:
                             host = http_head[host_index+1]
                             if self.host_match(host):
                                 self.buffers[(ip, src, dst)] = data
-                    header_end = self.buffers[(ip, src, dst)].find('\r\n\r\n')
-                    if header_end == -1:
-                        self.buffers[(ip, src, dst)].append(data)
-                        self.expected[(ip, src, dst)] = seq+1
-                    else:
-                        del self.expected[(ip, src, dst)]
+                    else: 
+                        header_end = self.buffers[(ip, src, dst)].find('\r\n\r\n')
+                        if header_end == -1:
+                            self.buffers[(ip, src, dst)] += data
+                            self.expected[(ip, src, dst)] = seq+1
+                        else:
+                            del self.expected[(ip, src, dst)]
                 else:
-                    if self.buffers[(ip, src, dst)] is None:
+                    if (ip,src, dst) not in self.buffers:
                         self.buffers[(ip, src, dst)] = data
                     if self. buffers[(ip,src,dst)].find('\r\n\r\n') == -1:
-                        self.buffers[(ip, src, dst)].append(data)
+                        self.buffers[(ip, src, dst)] += data
                         self.expected[(ip, src, dst)] = seq+1
                     else:
                         request = self.buffers[(ip, dst, src)].split('\r\n')
@@ -151,14 +152,13 @@ class Firewall:
         port = ord(pkt[head_length]) if protocol == 1 else port
         return (head_length, protocol, ip, port)
     def unpack_http(self, pkt):
-        seq = struct.unpack('!L', pkt[4:8])
-        offset = stuct.unpack('!B', pkt[12:13])[0] >> 4
+        seq = struct.unpack('!L', pkt[4:8])[0]
+        offset = struct.unpack('!B', pkt[12:13])[0] >> 4
         src, dst = struct.unpack('!HH', pkt[:4])
         data = pkt[offset+20:]
         return data, src, dst, seq
 
     def log_http(self, request, response, ip):
-        '''request, response: lists split by '\r\n''''
         # parse request header
         req_line = request[0].split(' ')
         method, path, version = req_line[0], req_line[1], req_line[2]
@@ -195,13 +195,13 @@ class Firewall:
     def host_match(self, host):
         match = False
         for rule in self.rules:
-            if rule[0] == 'log' and rule[2].match(host)
+            if rule[0] == 'log' and rule[2].match(host):
                 return True
         return False
 
     def rule_matches(self, rule, pkt, pkt_dir, verdict, protocol):
         if rule[1] == 'dns' and len(pkt) == 5 and rule[2].match(pkt[4]) is not None:
-            return rule[0] 
+            return (rule[0], protocol) 
         match = ((rule[1] == 'any' or rule[1] == pkt[1])
                  and self.ip_match(rule[2], pkt[2])
                  and self.port_match(rule[3], pkt[3]))
@@ -255,7 +255,7 @@ class Firewall:
         pkt = pkt[8:]
         dns_id = pkt[:2]
         rcode = pkt[3:4]
-        ttl = stuct.pack('!B', 1)
+        ttl = struct.pack('!B', 1)
         ip = struct.pack('!L', '54.173.224.150')
         dns_pkt = dns_id + '\x00' + rcode + '\x00\x01'+'\x00\x00\x00\x00\x00\x00' + ip
 
