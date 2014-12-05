@@ -205,15 +205,31 @@ class Firewall:
                  and self.ip_match(rule[2], pkt[2])
                  and self.port_match(rule[3], pkt[3]))
         return (rule[0], protocol) if match else (verdict, protocol)
+    
+    def ip_checksum(self, header):
+        words = struct.unpack('!H', header)
+        word_sum = 0x0000
+        for word in words:
+            word_sum += word
+        return 0xFFFF - word_sum
+
+    def tcp_checksum(self, src, dst, segment):
+        pseudo_head = src + dst + '\x00\x06' + struct.pack('!B', len(segment)/4)
+        segment = pseudo_head + segment
+        words = struct.unpack('!H', segment)
+        word_sum = 0x0000
+        for word in words:
+            word_sum += word
+        return 0xFFFF - word_sum
 
     def deny_tcp(self, pkt, base):
         # build ip header 
-        vsn = struct.pack('!B', 4 << 4)
-        length = struct.pack('!H', 40)
+        vsn = struct.pack('!B', 0x45)
+        length = struct.pack('!H', 0x40)
         src_ip = pkt[16:20] 
         dst_ip = pkt[12:16]
-        ttl = struct.pack('!B', 64)
-        protocol = struct.pack('!B', 6)
+        ttl = struct.pack('!B', 0x40)
+        protocol = struct.pack('!B', 0x06)
         
         iphead = vsn+'\x00'+length+'\x00\x00'+ttl+protocol+'\x00\x00'+src_ip+dst_ip
         ipchecksum = struct.pack('!H', self.ip_checksum(iphead))
@@ -227,7 +243,7 @@ class Firewall:
         flags = struct.pack('!B', 0b00010100)
         
         tcphead = srcport+dstport+seq+'\x00\x00\x00\x00\x00'+flags+'\x00\x00\x00\x00'
-        tcpchecksum = struct.pack('!H', self.tcp_checksum(tcphead))
+        tcpchecksum = struct.pack('!H', self.tcp_checksum(src_ip, dst, tcphead))
         tcphead = tcphead[:16] + tcpchecksum + tcphead[18:]
         
         rst_pkt = iphead + tcphead
@@ -236,18 +252,15 @@ class Firewall:
     def deny_dns(self, pkt, base):
         # build ip header 
         vsn = struct.pack('!B', 0x45)
-        length = struct.pack('!H', 0x36)
         src_ip = pkt[16:20] 
         dst_ip = pkt[12:16]
         ttl = struct.pack('!B', 0x01)
         protocol = struct.pack('!B', 0x17)
 
-
         # build udp header
         pkt = pkt[base:]
-        srcport = struct.pack('!H', 0x53)
-        dstport = struct.pack('!H', 0x53)
-        udplen = struct.pack('!H', 0x16)
+        srcport = pkt[2:4]
+        dstport = struct.pack('!H', 0x35)
         udphead = srcport + dstport + '\x00\x00\x00\x00'
         # build dns header
         pkt = pkt[8:]
@@ -263,14 +276,13 @@ class Firewall:
         rdlen = struct.pack('!B', 0x04)
         rd = struct.pack('!L', struct.unpack('!L', socket.inet_aton('54.173.224.150'))[0])
         rr = qname + qtype + qclass + ttl + rdlen + rd
-        rrlen = len(rr)/4
-        udphead = srcport + dstport + struct.pack('!H', rrlen) + '\x00\x00'
+        udplen = 20 + len(qname)/4 
+        udphead = srcport + dstport + struct.pack('!H', udplen) + '\x00\x00'
         udp_pkt = udphead + dnshead + rr
-        iphead = vsn+'\x00'+struct.pack('!H', )+'\x00\x00'+ttl+protocol+'\x00\x00'+src_ip+dst_ip
-        udp_pkt = udphead + dnshead + rr
-        dns_pkt = iphead + udphead + dnshead + rr
+        iplen = udplen + 20
+        iphead = vsn+'\x00'+struct.pack('!H', iplen)+'\x00\x00'+ttl+protocol+'\x00\x00'+src_ip+dst_ip
         
-        deny_pkt = iphead + udphead + dns_pkt
+        deny_pkt = iphead + udp_pkt
         self.iface_int.send_ip_packet(deny_pkt)
 
     # @pkt_dir: either PKT_DIR_INCOMING or PKT_DIR_OUTGOING
@@ -284,7 +296,7 @@ class Firewall:
             if verdict == 'deny':
                 if protocol == 'tcp':
                     self.deny_tcp(pkt, unpacked_pkt[0])
-                else:
+                elif protocol == 'dns' and pkt_dir == PKT_DIR_OUTGOING:
                     self.deny_dns(pkt, unpacked_pkt[0])
             else:
                 if pkt_dir == PKT_DIR_INCOMING:
