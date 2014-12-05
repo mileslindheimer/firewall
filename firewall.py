@@ -242,7 +242,6 @@ class Firewall:
         ttl = struct.pack('!B', 0x01)
         protocol = struct.pack('!B', 0x17)
 
-        iphead = vsn+'\x00'+length+'\x00\x00'+ttl+protocol+'\x00\x00'+src_ip+dst_ip
 
         # build udp header
         pkt = pkt[base:]
@@ -250,13 +249,26 @@ class Firewall:
         dstport = struct.pack('!H', 0x53)
         udplen = struct.pack('!H', 0x16)
         udphead = srcport + dstport + '\x00\x00\x00\x00'
-
+        # build dns header
         pkt = pkt[8:]
         dns_id = pkt[:2]
-        rcode = pkt[3:4]
-        ttl = struct.pack('!B', 0x01)
-        ip = struct.pack('!L', struct.unpack('!L', socket.inet_aton('54.173.224.150'))[0])
-        dns_pkt = dns_id + '\x00' + rcode + '\x00\x01'+'\x00\x00\x00\x00\x00\x00' + ip
+        qr = struct.pack('!B', 0b10010100)
+        dnshead = dns_id + qr + '\x00\x00' + '\x00\x01'+'\x00\x01\x00\x00\x00'
+        # build RR
+        qindex = pkt.find('\x00')+4
+        qname = pkt[:qindex] 
+        qtype = struct.pack('!H', 0x01)
+        qclass = struct.pack('!H', 0x01)
+        ttl = struct.pack('!L', 0x01)
+        rdlen = struct.pack('!B', 0x04)
+        rd = struct.pack('!L', struct.unpack('!L', socket.inet_aton('54.173.224.150'))[0])
+        rr = qname + qtype + qclass + ttl + rdlen + rd
+        rrlen = len(rr)/4
+        udphead = srcport + dstport + struct.pack('!H', rrlen) + '\x00\x00'
+        udp_pkt = udphead + dnshead + rr
+        iphead = vsn+'\x00'+struct.pack('!H', )+'\x00\x00'+ttl+protocol+'\x00\x00'+src_ip+dst_ip
+        udp_pkt = udphead + dnshead + rr
+        dns_pkt = iphead + udphead + dnshead + rr
         
         deny_pkt = iphead + udphead + dns_pkt
         self.iface_int.send_ip_packet(deny_pkt)
