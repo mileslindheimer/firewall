@@ -264,21 +264,22 @@ class Firewall:
         # build dns header
         pkt = pkt[8:]
         dns_id = pkt[:2]
-        qr = struct.pack('!B', 0b10010100)
+        qr = struct.pack('!H', 0x8180)
         ancount = struct.pack('!H', 0x0001)
         auth = struct.pack('!H', 0x0000)
-        dnshead = dns_id + qr + '\x00' + struct.pack('!H',0x0001)+ancount + auth+'\x00\x00'
+        dnshead = dns_id + qr  + struct.pack('!H',0x0001)+ancount + auth+'\x00\x00'
 
         # build RR
         pkt = pkt[12:]
         qindex = pkt.find('\x00')
-        qname = pkt[:qindex]+'\x00'
-        udplen = qindex
+        qname = pkt[:qindex+1]
+        udplen = qindex + 1
         qtype = struct.pack('!H', 0x0001)
         qclass = struct.pack('!H', 0x0001)
         dns_ttl = struct.pack('!L', 0x00000001)
         rdlen = struct.pack('!H', 0x0004)
         rd = socket.inet_aton('54.173.224.150')
+
         rr = qname + qtype + qclass + dns_ttl + rdlen + rd
         udplen += 34
         udphead = srcport + dstport + struct.pack('!H', udplen) + '\x00\x00'
