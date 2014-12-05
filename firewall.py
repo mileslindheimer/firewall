@@ -119,7 +119,7 @@ class Firewall:
             if (ip, src, dst) not in self.expected:
                 self.expected[(ip,src,dst)] = seq + 1
             # watch the seq modulo here!
-            elif seq > self.expected[(ip, src, dst)]:
+            elif seq >= self.expected[(ip, src, dst)]:
                 if pkt_dir == PKT_DIR_OUTGOING:
                     if (ip,src,dst) not in self.buffers: 
                         http_head = data.lower()
@@ -127,6 +127,7 @@ class Firewall:
                         if host_index != -1:
                             host = http_head[host_index+1]
                             if self.host_match(host):
+                                print 'here'
                                 self.buffers[(ip, src, dst)] = data
                     else: 
                         header_end = self.buffers[(ip, src, dst)].find('\r\n\r\n')
@@ -138,10 +139,10 @@ class Firewall:
                 else:
                     if (ip,src, dst) not in self.buffers:
                         self.buffers[(ip, src, dst)] = data
-                    if self. buffers[(ip,src,dst)].find('\r\n\r\n') == -1:
+                    elif self.buffers[(ip,src,dst)].find('\r\n\r\n') == -1:
                         self.buffers[(ip, src, dst)] += data
                         self.expected[(ip, src, dst)] = seq+1
-                    else:
+                    elif (ip, dst, src) in self.buffers:
                         request = self.buffers[(ip, dst, src)].split('\r\n')
                         response = self.buffers[(ip, src, dst)].split('\r\n')
                         self.log_http(request, response, ip)
@@ -153,7 +154,7 @@ class Firewall:
         return (head_length, protocol, ip, port)
     def unpack_http(self, pkt):
         seq = struct.unpack('!L', pkt[4:8])[0]
-        offset = struct.unpack('!B', pkt[12:13])[0] >> 4
+        offset = struct.unpack('!B', pkt[12:13])[0] & 0xFF00
         src, dst = struct.unpack('!HH', pkt[:4])
         data = pkt[offset+20:]
         return data, src, dst, seq
@@ -164,7 +165,7 @@ class Firewall:
         method, path, version = req_line[0], req_line[1], req_line[2]
         hostname = ip
         for line in request:
-            line.split('')
+            line.split(' ')
             if line[0].lower() == 'host':
                 hostname = line[1]
                 break
@@ -210,7 +211,10 @@ class Firewall:
         words = struct.unpack('!H', header)
         word_sum = 0x0000
         for word in words:
-            word_sum += word
+            word_sum & word
+        while word_sum >> 16:
+            mask = 0xFF00 & word_sum
+            word_sum += mask
         return 0xFFFF - word_sum
 
     def tcp_checksum(self, src, dst, segment):
@@ -219,19 +223,22 @@ class Firewall:
         words = struct.unpack('!H', segment)
         word_sum = 0x0000
         for word in words:
-            word_sum += word
+            word_sum & word
+        while word_sum >> 16:
+            mask = 0xFF00 & word_sum
+            word_sum += mask
         return 0xFFFF - word_sum
 
     def deny_tcp(self, pkt, base):
         # build ip header 
         vsn = struct.pack('!B', 0x45)
-        length = struct.pack('!H', 0x40)
         src_ip = pkt[16:20] 
         dst_ip = pkt[12:16]
         ttl = struct.pack('!B', 0x40)
         protocol = struct.pack('!B', 0x06)
+        length = struct.pack('!H', 0x28)
         
-        iphead = vsn+'\x00'+length+'\x00\x00'+ttl+protocol+'\x00\x00'+src_ip+dst_ip
+        iphead = vsn+'\x00'+length+'\x00\x00\x00\x00'+ttl+protocol+'\x00\x00'+src_ip+dst_ip
         ipchecksum = struct.pack('!H', self.ip_checksum(iphead))
         iphead = iphead[:10] + ipchecksum + iphead[12:]
 
@@ -239,22 +246,22 @@ class Firewall:
         pkt = pkt[base:]
         srcport = pkt[2:4]
         dstport = pkt[:2]
-        seq = struct.pack('!H', struct.unpack('!H', pkt[4:8])+1)
+        seq = struct.pack('!L', struct.unpack('!L', pkt[4:8])+1)
         flags = struct.pack('!B', 0b00010100)
         
-        tcphead = srcport+dstport+seq+'\x00\x00\x00\x00\x00'+flags+'\x00\x00\x00\x00'
-        tcpchecksum = struct.pack('!H', self.tcp_checksum(src_ip, dst, tcphead))
+        tcphead = srcport+dstport+seq+'\x00\x00\x00\x00\x00'+flags+'\x00\x00\x00\x00\x00\x00'
+        tcpchecksum = struct.pack('!H', self.tcp_checksum(src_ip, dstport, tcphead))
         tcphead = tcphead[:16] + tcpchecksum + tcphead[18:]
         
         rst_pkt = iphead + tcphead
-        self.iface_ext.send_ip_packet(rst_pkt)
+        self.iface_int.send_ip_packet(rst_pkt)
 
     def deny_dns(self, pkt, base):
         # build ip header 
         vsn = struct.pack('!B', 0x45)
         src_ip = pkt[16:20] 
         dst_ip = pkt[12:16]
-        ttl = struct.pack('!B', 0x01)
+        ttl = struct.pack('!B', 0x40)
         protocol = struct.pack('!B', 0x11)
 
         # build udp header
@@ -279,7 +286,6 @@ class Firewall:
         dns_ttl = struct.pack('!L', 0x00000001)
         rdlen = struct.pack('!H', 0x0004)
         rd = socket.inet_aton('54.173.224.150')
-
         rr = qname + qtype + qclass + dns_ttl + rdlen + rd
         udplen += 34
         udphead = srcport + dstport + struct.pack('!H', udplen) + '\x00\x00'
