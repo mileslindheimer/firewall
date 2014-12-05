@@ -259,34 +259,36 @@ class Firewall:
 
         # build udp header
         pkt = pkt[base:]
-        srcport = pkt[2:4]
-        dstport = struct.pack('!H', 0x35)
-        udphead = '\x00\x00\x00\x00' + dstport + srcport
+        dstport = pkt[:2]
+        srcport = struct.pack('!H', 0x0035)
         # build dns header
         pkt = pkt[8:]
         dns_id = pkt[:2]
         qr = struct.pack('!B', 0b10010100)
-        qdcount = struct.pack('!H', 0x01)
-        # dnshead = dns_id + qr + '\x00' + struct.pack('!H',0x01) + '\x00\x00\x00'
-        dnshead = '\x00\x00\x00\x00'+struct.pack('!H',0x01)+qdcount+'\x00'+qr+dns_id
+        ancount = struct.pack('!H', 0x0001)
+        auth = struct.pack('!H', 0x0001)
+        dnshead = dns_id + qr + '\x00' + struct.pack('!H',0x0000)+ancount + auth+'\x00\x00'
 
         # build RR
+        pkt = pkt[12:]
         qindex = pkt.find('\x00')
-        qname = pkt[:qindex] + '\x00'
-        qtype = struct.pack('!H', 0x01)
-        qclass = struct.pack('!H', 0x01)
-        ttl = struct.pack('!L', 0x01)
-        rdlen = struct.pack('!B', 0x04)
-        rd = socket.inet_aton('54.173.224.150')[0]
-        rr = rd + rdlen + ttl + qclass + qtype + qname 
-        # qname + qtype + qclass + ttl + rdlen + rd
-        udplen = 28 + qindex
-        udphead = '\x00\x00' + struct.pack('!H', udplen) + dstport + srcport
-        udp_pkt = rr + dnshead + udphead
+        qname = pkt[:qindex]+'\x00'
+        udplen = qindex+1
+        if qindex % 2 == 0:
+            qname += '\x00'
+            udplen += 1
+        qtype = struct.pack('!H', 0x0001)
+        qclass = struct.pack('!H', 0x0001)
+        dns_ttl = struct.pack('!L', 0x00000001)
+        rdlen = struct.pack('!H', 0x0004)
+        rd = socket.inet_aton('54.173.224.150')
+        rr = qname + qtype + qclass + dns_ttl + rdlen + rd
+        udplen += 34
+        udphead = srcport + dstport + struct.pack('!H', udplen) + '\x00\x00'
+        udp_pkt = udphead + dnshead + rr
         iplen = udplen + 20
-        # iphead = vsn+'\x00'+struct.pack('!H', iplen)+'\x00\x00'+ttl+protocol+'\x00\x00'+src_ip+dst_ip
-        iphead = dst_ip+src_ip+'\x00\x00'+protocol+ttl+'\x00\x00'+struct.pack('!H', iplen)+'\x00'+vsn 
-        deny_pkt = udp_pkt + iphead
+        iphead = vsn+'\x00'+struct.pack('!H', iplen)+'\x00\x00\x00\x00'+ttl+protocol+'\x00\x00'+src_ip+dst_ip
+        deny_pkt = iphead + udp_pkt
         self.iface_int.send_ip_packet(deny_pkt)
 
     # @pkt_dir: either PKT_DIR_INCOMING or PKT_DIR_OUTGOING
