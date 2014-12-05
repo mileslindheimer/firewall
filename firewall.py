@@ -266,17 +266,14 @@ class Firewall:
         dns_id = pkt[:2]
         qr = struct.pack('!B', 0b10010100)
         ancount = struct.pack('!H', 0x0001)
-        auth = struct.pack('!H', 0x0001)
-        dnshead = dns_id + qr + '\x00' + struct.pack('!H',0x0000)+ancount + auth+'\x00\x00'
+        auth = struct.pack('!H', 0x0000)
+        dnshead = dns_id + qr + '\x00' + struct.pack('!H',0x0001)+ancount + auth+'\x00\x00'
 
         # build RR
         pkt = pkt[12:]
         qindex = pkt.find('\x00')
         qname = pkt[:qindex]+'\x00'
-        udplen = qindex+1
-        if qindex % 2 == 0:
-            qname += '\x00'
-            udplen += 1
+        udplen = qindex
         qtype = struct.pack('!H', 0x0001)
         qclass = struct.pack('!H', 0x0001)
         dns_ttl = struct.pack('!L', 0x00000001)
